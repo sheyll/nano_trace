@@ -8,7 +8,7 @@
 %%% @end
 %%%=============================================================================
 
--module(lbm_tracer).
+-module(nano_trace).
 
 -behaviour(gen_server).
 
@@ -142,11 +142,11 @@ long_help() ->
     io:format("Return a filter that is well suited for internal testing.~n"),
     io:format("~n~n"),
     io:format("print_applications() ->~n"),
-    io:format("                 [atom()].~n"),
+    io:format("                 ok.~n"),
     io:format("Print a list of applications to be traced.~n"),
     io:format("~n~n"),
     io:format("print_traced_functions() ->~n"),
-    io:format("                 [{module(), atom()}].~n"),
+    io:format("                ok.~n"),
     io:format("Print a list of functions that are traced.~n"),
     io:format("~n~n"),
     io:format("TYPES~n"),
@@ -327,7 +327,7 @@ print_applications() ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec print_traced_functions() ->
-                  [{module(), atom()}].
+                  ok.
 print_traced_functions() ->
     Funs = gen_server:call(?MODULE, get_traced_functions),
     io:format("~nTraced functions:~n~p~n~n", [Funs]).
