@@ -73,7 +73,7 @@ help() ->
     io:format("~n"),
     io:format("A tracer that only traces function calls to modules in a list of applications.n"),
     io:format("For a trace that traces also messages, spawns and exits use another tracer .~n"),
-    io:format("By default only events matching lbm_tracer:lbm_filter()  are recoreded.~n"),
+    io:format("By default only events matching lbm_filter()  are recoreded.~n"),
     io:format("~n"),
     helped.
 
