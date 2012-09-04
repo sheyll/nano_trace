@@ -13,22 +13,25 @@
 -behaviour(gen_server).
 
 %% API
--export([help/0,
-         long_help/0,
+-export([
          add_app/1,
-         filter/1,
          filter/0,
+         filter/1,
+         help/0,
          lbm_filter/0,
+         long_help/0,
+         msg_depth/1,
+         pause/0,
+         print_applications/0,
+         print_traced_functions/0,
          remove_app/1,
+         resume/0,
          start/0,
          start/1,
          start/2,
          start/3,
-         pause/0,
-         resume/0,
-         stop/0,
-         print_applications/0,
-         print_traced_functions/0]).
+         stop/0
+        ]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -53,7 +56,11 @@
                 allF.
 
 -define(FLAGS, [call, timestamp, return_to]).
-
+-define(DEFAULT_MSG_DEPTH, 15).
+-define(DEFAULT_IGNORED_APPS,
+        [appmon, gs, kernel, mnesia, ssl, snmp, otp_mibs,
+         xmerl, crypto, stdlib, public_key, observer,
+         syntax_tools, tools, compiler, tv, os_mon, tv, inets, sasl]).
 -define(MATCH_SPEC, [{'_', [], [{return_trace},{exception_trace}]}]).
 
 %%%=============================================================================
@@ -71,9 +78,17 @@ help() ->
     io:format("SYNOPSIS~n"),
     io:format("================================================================================~n"),
     io:format("~n"),
-    io:format("A tracer that only traces function calls to modules in a list of applications.n"),
+    io:format("A tracer that only traces function calls to modules in a list of applications.~n"),
     io:format("For a trace that traces also messages, spawns and exits use another tracer .~n"),
-    io:format("By default only events matching lbm_filter()  are recoreded.~n"),
+    io:format("By default some applications are traced. See print_applications/0, also you can~n"),
+    io:format("add and remove applications.~n"),
+    io:format("~n"),
+    io:format("By default the messages are cropped to prevent flooding the log file.~n"),
+    io:format("To change/disable the limitation of the message depth use msg_depth/1.~n"),
+    io:format("~n"),
+    io:format("For a description of all functions call long_help/0.~n"),
+    io:format("~n"),
+    io:format("~n"),
     io:format("~n"),
     helped.
 
@@ -86,75 +101,71 @@ help() ->
                   helped.
 long_help() ->
     io:format("FUNCTIONS~n"),
-    io:format("================================================================================~n"),
+    io:format("=========n~n"),
     io:format("start() ->~n"),
     io:format("   {ok, pid()} | {error, term()}.~n"),
-    io:format("Start the server. The most important mrf applications are traced with~n"),
-    io:format("lbm_filter, also the output filename is 'default-trace.log'.~n"),
+    io:format("  Start the server. The most important mrf applications are traced with~n"),
+    io:format("  lbm_filter, also the output filename is 'default-trace.log'.~n"),
     io:format("~n~n"),
     io:format("start([module()]) ->~n"),
     io:format("   {ok, pid()} | {error, term()}.~n"),
-    io:format("Start the server. The parameter is a list of applications that are analyzed~n"),
-    io:format("in order to find out the modules, to be used as trace pattern for call trace.~n"),
+    io:format("  Start the server. The parameter is a list of applications that are analyzed~n"),
+    io:format("  in order to find out the modules, to be used as trace pattern for call trace.~n"),
     io:format("~n~n"),
     io:format("start([module()], string()) ->~n"),
     io:format("                       {ok, pid()} | {error, term()}.~n"),
-    io:format("Start the server. The parameter is a list of applications that are analyzed~n"),
-    io:format("in order to find out the modules, to be used as trace pattern for call trace.~n"),
-    io:format("Second parameter is the output filename.~n"),
-    io:format("~n"),
+    io:format("  Start the server. The parameter is a list of applications that are analyzed~n"),
+    io:format("  in order to find out the modules, to be used as trace pattern for call trace.~n"),
+    io:format("  Second parameter is the output filename.~n"),
+    io:format("~n~n"),
     io:format("start([module()], string(), test()) ->~n"),
     io:format("                       {ok, pid()} | {error, term()}.~n"),
-    io:format("Start the server. The parameter is a list of applications that are analyzed~n"),
-    io:format("in order to find out the modules, to be used as trace pattern for call trace.~n"),
-    io:format("Second parameter is the output filename, the third is the default filter.~n"),
+    io:format("  Start the server. The parameter is a list of applications that are analyzed~n"),
+    io:format("  in order to find out the modules, to be used as trace pattern for call trace.~n"),
+    io:format("  Second parameter is the output filename, the third is the default filter.~n"),
     io:format("~n~n"),
     io:format("stop() ->~n"),
     io:format("                ok.~n"),
-    io:format("Stops tracing and resets all trace patterns.~n"),
+    io:format("  Stops tracing and resets all trace patterns.~n"),
     io:format("~n~n"),
     io:format("pause() ->~n"),
     io:format("                ok.~n"),
-    io:format("Pauses tracing.~n"),
+    io:format("  Pauses tracing.~n"),
     io:format("~n~n"),
     io:format("resume() ->~n"),
     io:format("                ok.~n"),
-    io:format("Resumes tracing.~n"),
+    io:format("  Resumes tracing.~n"),
     io:format("~n~n"),
     io:format("add_app(module()) ->~n"),
     io:format("   ok.~n"),
-    io:format("This will add the application to the traced applications.~n"),
+    io:format("  Add an application to tracing.~n"),
     io:format("~n~n"),
     io:format("remove_app(module()) ->~n"),
     io:format("                    ok.~n"),
-    io:format("This will remove the application from the traced applications.~n"),
+    io:format("  Remove an application from tracing.~n"),
     io:format("~n~n"),
     io:format("filter(test()) ->~n"),
     io:format("                 ok.~n"),
-    io:format("Only trace events matching an expression.~n"),
+    io:format("  Only log trace events matching an expression.~n"),
     io:format("~n~n"),
     io:format("filter() ->~n"),
     io:format("                 test().~n"),
-    io:format("Return the current filter.~n"),
+    io:format("  Return the current filter.~n"),
     io:format("~n~n"),
     io:format("lbm_filter() ->~n"),
     io:format("                 test().~n"),
-    io:format("Return a filter that is well suited for internal testing.~n"),
+    io:format("  Return a filter that is well suited for internal testing.~n"),
     io:format("~n~n"),
     io:format("print_applications() ->~n"),
     io:format("                 ok.~n"),
-    io:format("Print a list of applications to be traced.~n"),
+    io:format("  Show the applications that are currently being traced.~n"),
     io:format("~n~n"),
     io:format("print_traced_functions() ->~n"),
     io:format("                ok.~n"),
-    io:format("Print a list of functions that are traced.~n"),
-    io:format("~n~n"),
+    io:format("  Show the functions that are currently being traced.~n"),
+    io:format("~n~n~n"),
     io:format("TYPES~n"),
-    io:format("================================================================================~n"),
-    io:format("~n"),
-    io:format("This type is used by find and filter, it defines the structure of~n"),
-    io:format("expressions to restrict the output of the trace log.~n"),
-    io:format("~n"),
+    io:format("=====~n~n"),
     io:format("test() :: Type :: type() |~n"),
     io:format("          {Type :: type(), Pattern :: string()} |~n"),
     io:format("          {notF, test()} |~n"),
@@ -165,12 +176,17 @@ long_help() ->
     io:format("          string() |~n"),
     io:format("          allF.~n"),
     io:format("~n"),
-    io:format("This type is used to describe the kind of trace event, it is used~n"),
-    io:format("inside test()~n"),
-    io:format("~n"),
+    io:format("  This type is used by find and filter, it defines the structure of~n"),
+    io:format("  expressions to restrict the output of the trace log.~n"),
+    io:format("~n~n"),
     io:format("type() :: call | return | exception.~n"),
     io:format("~n"),
-  helped.
+    io:format("  This type is used to describe the kind of trace event, it is used~n"),
+    io:format("  inside test()~n"),
+    io:format("~n"),
+    io:format("~n"),
+    io:format("~n"),
+    helped.
 
 
 %%------------------------------------------------------------------------------
@@ -182,12 +198,7 @@ long_help() ->
 -spec start() ->
                         {ok, pid()} | {error, term()}.
 start() ->
-    start([lbm_api,
-           simple,
-           erlce,
-           lbm_lib,
-           core,
-           q931_lib], "default-trace.log").
+    start(default_applications(), "default-trace.log").
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -274,6 +285,20 @@ pause() ->
                   ok.
 resume() ->
     gen_server:call(?MODULE, resume).
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Define the limitation on trace message depth. This is used to crop function
+%% call arguments and return values. Passing a number will define the depth
+%% parameter used when formatting with "~P" ... [Depth], passing 'unlimited' will
+%% format the messages with "~p".
+%% @see io:fwrite/2
+%% @end
+%%------------------------------------------------------------------------------
+-spec msg_depth(non_neg_integer() | unlimited) ->
+                       ok.
+msg_depth(Depth) ->
+    gen_server:call(?MODULE, {msg_depth, Depth}).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -371,10 +396,11 @@ check_test(_) ->
 %%%=============================================================================
 
 -record(state, {
-          applications   = []               :: [atom()],
-          trace_active   = false            :: boolean(),
-          trace_patterns = []               :: [{module(), '_', '_'}],
-          filter         = allF             :: test(),
+          applications   = []                 :: [atom()],
+          trace_active   = false              :: boolean(),
+          trace_patterns = []                 :: [{module(), '_', '_'}],
+          filter         = allF               :: test(),
+          depth          = ?DEFAULT_MSG_DEPTH :: non_neg_integer() | unlimited,
           io_device}).
 
 %%------------------------------------------------------------------------------
@@ -396,6 +422,9 @@ init([Applications, FileName, Filter]) ->
 %%------------------------------------------------------------------------------
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State};
+
+handle_call({msg_depth, Depth}, _From, State) ->
+    {reply, ok, State#state{depth = Depth}};
 
 handle_call({filter, Filter}, _From, State) ->
     {reply, ok, State#state{filter = Filter}};
@@ -433,12 +462,14 @@ handle_cast({remove_app, Application}, State) ->
 %%------------------------------------------------------------------------------
 %% @private
 %%------------------------------------------------------------------------------
-handle_info(Trace, State = #state{filter = Filter, io_device = IoDevice})
+handle_info(Trace, State = #state{filter    = Filter,
+                                  io_device = IoDevice,
+                                  depth     = Depth})
   when is_tuple(Trace) andalso element(1, Trace) =:= trace_ts ->
     if
         State#state.trace_active ->
             Msg = lists:flatten(
-                         [M || T = {_, M} <- format(Trace),
+                         [M || T = {_, M} <- format(Trace, Depth),
                                filter(Filter, T)]),
             file:write(IoDevice, Msg),
             {noreply, State};
@@ -478,6 +509,11 @@ get_modules(Applications) ->
       fun(Application, Acc) ->
 	      case application:get_key(Application, modules) of
 		  {ok, Modules} ->
+                      {ok, Vsn} = application:get_key(Application, vsn),
+                      {ok, Title} = application:get_key(Application, description),
+                      io:format("Tracing application ~s ~s (~w modules)~n     ~s~n~n",
+                                [Application, Vsn, length(Modules), Title]),
+
 		      Acc ++ Modules;
 
 		  undefined ->
@@ -496,38 +532,53 @@ get_trace_patterns(Modules) ->
 %%------------------------------------------------------------------------------
 %% @private
 %%------------------------------------------------------------------------------
--spec format(term()) ->
+-spec format(term(), non_neg_integer() | unlimited) ->
 		    [{type(), string()}].
-format({trace_ts, Pid, call, {M,F,A}, TimeStamp}) ->
+format({trace_ts, Pid, call, {M,F,A}, TimeStamp}, Depth) ->
     [{call,
-      format(">>>", TimeStamp, Pid, {M, F, length(A)}, "applied to", A)}];
+      format(">>>", TimeStamp, Pid,
+             {M, F, length(A)}, "applied to", A, Depth)}];
 
-format({trace_ts, Pid, return_from, {M,F,A}, RV, TimeStamp}) ->
+format({trace_ts, Pid, return_from, {M,F,A}, RV, TimeStamp}, Depth) ->
     [{return,
-      format("<<<", TimeStamp, Pid, {M, F, A}, "returned", RV)}];
+      format("<<<", TimeStamp, Pid,
+             {M, F, A}, "returned", RV, Depth)}];
 
-format({trace_ts, Pid, return_to, {M,F,A}, TimeStamp}) ->
+format({trace_ts, Pid, return_to, {M,F,A}, TimeStamp}, Depth) ->
     [{return,
-      format("<<<", TimeStamp, Pid, {M,F,A}, "was returned to", "" )}];
+      format("<<<", TimeStamp, Pid,
+             {M,F,A}, "was returned to", "", Depth)}];
 
-format({trace_ts, Pid, exception_from, {M,F,A}, Exc, TimeStamp}) ->
+format({trace_ts, Pid, exception_from, {M,F,A}, Exc, TimeStamp}, Depth) ->
     [{exception,
       format("*** EXCEPTION ***", TimeStamp, Pid,
-             {M,F,A}, "threw", Exc)}];
+             {M,F,A}, "threw", Exc, Depth)}];
 
-format(_) ->
+format(_, _) ->
     [].
 
 %%------------------------------------------------------------------------------
 %% @private
 %%------------------------------------------------------------------------------
-format(Symbol, When, Pid, Func, Action, Arg) ->
+format(Symbol, When, Pid, Func, Action, Arg, Depth) ->
     WhenStr = format_time(When),
     FuncStr = format_func(Func),
+    format_cropped(Symbol, WhenStr, Pid, FuncStr, Action, Arg, Depth).
+
+%%------------------------------------------------------------------------------
+%% @private
+%%------------------------------------------------------------------------------
+format_cropped(Symbol, WhenStr, Pid, FuncStr, Action, Arg, unlimited) ->
     lists:flatten(
       io_lib:format(
 	"~s ~s ~-15w ~-40s ~15s: ~150p~n~n",
-	[Symbol, WhenStr, Pid, FuncStr, Action, Arg])).
+	[Symbol, WhenStr, Pid, FuncStr, Action, Arg]));
+
+format_cropped(Symbol, WhenStr, Pid, FuncStr, Action, Arg, Depth) ->
+    lists:flatten(
+      io_lib:format(
+	"~s ~s ~-15w ~-40s ~15s: ~150P~n~n",
+	[Symbol, WhenStr, Pid, FuncStr, Action, Arg, Depth])).
 
 %%------------------------------------------------------------------------------
 %% @private
@@ -664,13 +715,17 @@ lbm_white_list() ->
 lbm_black_list() ->
     {andF,
      {orF, call, return},
-     {orF, [":handle_call",
-            ":handle_cast",
-            ":handle_info",
-            ":handle_event",
-            ":ref/2",
+     {orF, [":ref/2",
             "core_log_handler:",
             "core_media_id:",
             "core_descriptor:",
             "error_logger:",
             "lbm_object:"]}}.
+
+%%------------------------------------------------------------------------------
+%% @private
+%%------------------------------------------------------------------------------
+default_applications() ->
+    IgnoredApps = ?DEFAULT_IGNORED_APPS,
+    [A || {A, _, _} <- application:loaded_applications(),
+                 not lists:member(A, IgnoredApps)].
