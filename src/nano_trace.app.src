@@ -1,0 +1,9 @@
+{application, nano_trace,
+ [
+  {description, "Production grade tracer that traces function calls to modules from OTP applications in a human readable format into a file."},
+  {vsn, "1.0.0"},
+  {registered, [nano_trace]},
+  {applications, [kernel,
+                  stdlib
+                 ]}
+ ]}.
