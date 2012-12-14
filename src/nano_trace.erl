@@ -18,7 +18,6 @@
          filter/0,
          filter/1,
          help/0,
-         lbm_filter/0,
          long_help/0,
          msg_depth/1,
          pause/0,
@@ -55,8 +54,11 @@
                 string() |
                 allF.
 
+-define(LEFT_WIDTH, "50").
+-define(RIGHT_WIDTH, "145").
+
 -define(FLAGS, [call, timestamp, return_to]).
--define(DEFAULT_MSG_DEPTH, 15).
+-define(DEFAULT_MSG_DEPTH, 16).
 -define(DEFAULT_IGNORED_APPS,
         [appmon, gs, kernel, mnesia, ssl, snmp, otp_mibs,
          xmerl, crypto, stdlib, public_key, observer,
@@ -104,8 +106,8 @@ long_help() ->
     io:format("=========n~n"),
     io:format("start() ->~n"),
     io:format("   {ok, pid()} | {error, term()}.~n"),
-    io:format("  Start the server. The most important mrf applications are traced with~n"),
-    io:format("  lbm_filter, also the output filename is 'default-trace.log'.~n"),
+    io:format("  Start the server, trace all applications not in ?DEFAULT_IGNORED_APPS. ~n"),
+    io:format("  ~n"),
     io:format("~n~n"),
     io:format("start([module()]) ->~n"),
     io:format("   {ok, pid()} | {error, term()}.~n"),
@@ -152,10 +154,6 @@ long_help() ->
     io:format("                 test().~n"),
     io:format("  Return the current filter.~n"),
     io:format("~n~n"),
-    io:format("lbm_filter() ->~n"),
-    io:format("                 test().~n"),
-    io:format("  Return a filter that is well suited for internal testing.~n"),
-    io:format("~n~n"),
     io:format("print_applications() ->~n"),
     io:format("                 ok.~n"),
     io:format("  Show the applications that are currently being traced.~n"),
@@ -191,8 +189,9 @@ long_help() ->
 
 %%------------------------------------------------------------------------------
 %% @doc
-%% Start the server, and trace most important lbm_applications.
-%% The trace is written to a file called "default-trace.log".
+%% Start the server, and trace all current applications, that are not
+%% listed in ?DEFAULT_IGNORED_APPS.  The trace is written to a file
+%% called default-trace.log/
 %% @end
 %%------------------------------------------------------------------------------
 -spec start() ->
@@ -214,14 +213,14 @@ start(Applications) ->
 
 %%------------------------------------------------------------------------------
 %% @doc
-%% Start the server with a custom output file name. Default filtering for
-%% is applied.
+%% Start the server with a custom output file name. Filtering is
+%% disabled.
 %% @end
 %%------------------------------------------------------------------------------
 -spec start([module()], string()) ->
                         {ok, pid()} | {error, term()}.
 start(Applications, FileName) ->
-    start(Applications, FileName, lbm_filter()).
+    start(Applications, FileName, 'allF').
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -324,16 +323,6 @@ filter(Test) ->
              test().
 filter() ->
     gen_server:call(?MODULE, get_filter, infinity).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Return a filter that is well suited for internal testing.
-%% @end
-%%------------------------------------------------------------------------------
--spec lbm_filter() ->
-                        test().
-lbm_filter() ->
-    {orF, lbm_white_list(), {notF, lbm_black_list()}}.
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -571,13 +560,13 @@ format(Symbol, When, Pid, Func, Action, Arg, Depth) ->
 format_cropped(Symbol, WhenStr, Pid, FuncStr, Action, Arg, unlimited) ->
     lists:flatten(
       io_lib:format(
-	"~s ~s ~-15w ~-40s ~15s: ~150p~n~n",
+	"~s ~s ~-15w ~-"++ ?LEFT_WIDTH ++"s ~15s: ~"++ ?RIGHT_WIDTH ++"p~n~n",
 	[Symbol, WhenStr, Pid, FuncStr, Action, Arg]));
 
 format_cropped(Symbol, WhenStr, Pid, FuncStr, Action, Arg, Depth) ->
     lists:flatten(
       io_lib:format(
-	"~s ~s ~-15w ~-40s ~15s: ~150P~n~n",
+	"~s ~s ~-15w ~-"++ ?LEFT_WIDTH ++"s ~15s: ~"++ ?RIGHT_WIDTH ++"P~n~n",
 	[Symbol, WhenStr, Pid, FuncStr, Action, Arg, Depth])).
 
 %%------------------------------------------------------------------------------
@@ -702,25 +691,6 @@ create_file_name() ->
             "~4..0w-~2..0w-~2..0w-~2..0w-~2..0w-~2..0w",
             [YYYY, MM, DD, HH, Mm, SS])),
     "trace-" ++ Timestamp.
-
-%%------------------------------------------------------------------------------
-%% @private
-%%------------------------------------------------------------------------------
-lbm_white_list() ->
-    exception.
-
-%%------------------------------------------------------------------------------
-%% @private
-%%------------------------------------------------------------------------------
-lbm_black_list() ->
-    {andF,
-     {orF, call, return},
-     {orF, [":ref/2",
-            "core_log_handler:",
-            "core_media_id:",
-            "core_descriptor:",
-            "error_logger:",
-            "lbm_object:"]}}.
 
 %%------------------------------------------------------------------------------
 %% @private
