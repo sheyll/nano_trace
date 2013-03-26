@@ -55,6 +55,9 @@
                 allF.
 
 -define(DEFAULT_MSG_DEPTH, 30).
+-define(LEFT_WIDTH, "50").
+-define(RIGHT_WIDTH, "145").
+
 -define(DEFAULT_IGNORED_APPS,
         [appmon, gs, kernel, mnesia, ssl, snmp, otp_mibs,
          xmerl, crypto, stdlib, public_key, observer,
@@ -586,13 +589,13 @@ format(Symbol, When, Pid, Func, Action, Arg, Depth) ->
 format_cropped(Symbol, WhenStr, Pid, FuncStr, Action, Arg, unlimited) ->
     lists:flatten(
       io_lib:format(
-	"~s ~s ~-15w ~-40s ~15s: ~150p~n~n",
+	"~s ~s ~-15w ~-"++ ?LEFT_WIDTH ++"s ~15s: ~"++ ?RIGHT_WIDTH ++"p~n~n",
 	[Symbol, WhenStr, Pid, FuncStr, Action, Arg]));
 
 format_cropped(Symbol, WhenStr, Pid, FuncStr, Action, Arg, Depth) ->
     lists:flatten(
       io_lib:format(
-	"~s ~s ~-15w ~-40s ~15s: ~150P~n~n",
+	"~s ~s ~-15w ~-"++ ?LEFT_WIDTH ++"s ~15s: ~"++ ?RIGHT_WIDTH ++"P~n~n",
 	[Symbol, WhenStr, Pid, FuncStr, Action, Arg, Depth])).
 
 %%------------------------------------------------------------------------------
