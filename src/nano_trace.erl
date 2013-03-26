@@ -13,7 +13,7 @@
 -behaviour(gen_server).
 
 %% API
--export([
+-export([create_file_name/0,
          add_app/1,
          filter/0,
          filter/1,
@@ -64,7 +64,7 @@
          syntax_tools, tools, compiler, tv, os_mon, tv, inets, sasl,
          cowboy, ranch, hipe, siagnosis, md2, runtime_tools, webtool,
          syslog, logger, nano_trace, observer, edoc, wx, etop, asn1,
-         eunit, erlymock]).
+         eunit, erlymock, lbm_lib]).
 -define(MATCH_SPEC, [{'_', [], [{return_trace},{exception_trace}]}]).
 
 %%%=============================================================================
@@ -106,9 +106,13 @@ help() ->
 long_help() ->
     io:format("FUNCTIONS~n"),
     io:format("=========n~n"),
+    io:format("create_file_name() ->~n"),
+    io:format("                    string().~n"),
+    io:format("  Create a filename with the current date and time in the filename.~n"),
+    io:format("~n~n"),
     io:format("start() ->~n"),
     io:format("   {ok, pid()} | {error, term()}.~n"),
-    io:format("  Start the server. The output filename is 'default-trace.log'.~n"),
+    io:format("  Start the server. The output filename is 'nano.trace'.~n"),
     io:format("~n~n"),
     io:format("start([module()]) ->~n"),
     io:format("   {ok, pid()} | {error, term()}.~n"),
@@ -187,6 +191,21 @@ long_help() ->
     io:format("~n"),
     helped.
 
+%%------------------------------------------------------------------------------
+%% @doc
+%% Create filename that contains the current time and date.
+%% @end
+%%------------------------------------------------------------------------------
+-spec create_file_name() ->
+                              string().
+create_file_name() ->
+    {{YYYY, MM, DD}, {HH, Mm, SS}} = calendar:now_to_local_time(now()),
+    Timestamp =
+        lists:flatten(
+          io_lib:format(
+            "~4..0w-~2..0w-~2..0w-~2..0w-~2..0w-~2..0w",
+            [YYYY, MM, DD, HH, Mm, SS])),
+    "trace-" ++ Timestamp.
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -196,7 +215,7 @@ long_help() ->
 -spec start() ->
                         {ok, pid()} | {error, term()}.
 start() ->
-    start(default_applications(), "default-trace.log").
+    start(default_applications(), "nano.trace").
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -208,7 +227,7 @@ start() ->
 -spec start([module()]) ->
                         {ok, pid()} | {error, term()}.
 start(Applications) ->
-    start(Applications, create_file_name()).
+    start(Applications, "nano.trace.").
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -700,18 +719,6 @@ pause_tracing(S) ->
     disable_tracing(),
     io:format("~n~n+++ TRACING DISABLED +++~n~n"),
     S#state{trace_active = false}.
-
-%%------------------------------------------------------------------------------
-%% @private
-%%------------------------------------------------------------------------------
-create_file_name() ->
-    {{YYYY, MM, DD}, {HH, Mm, SS}} = calendar:now_to_local_time(now()),
-    Timestamp =
-        lists:flatten(
-          io_lib:format(
-            "~4..0w-~2..0w-~2..0w-~2..0w-~2..0w-~2..0w",
-            [YYYY, MM, DD, HH, Mm, SS])),
-    "trace-" ++ Timestamp.
 
 %%------------------------------------------------------------------------------
 %% @private
