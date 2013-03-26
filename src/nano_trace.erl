@@ -55,8 +55,8 @@
                 string() |
                 allF.
 
--define(FLAGS, [call, timestamp, return_to]).
--define(DEFAULT_MSG_DEPTH, 15).
+-define(FLAGS, [call, timestamp, return_to, send]).
+-define(DEFAULT_MSG_DEPTH, 20).
 -define(DEFAULT_IGNORED_APPS,
         [appmon, gs, kernel, mnesia, ssl, snmp, otp_mibs,
          xmerl, crypto, stdlib, public_key, observer,
@@ -534,6 +534,15 @@ get_trace_patterns(Modules) ->
 %%------------------------------------------------------------------------------
 -spec format(term(), non_neg_integer() | unlimited) ->
 		    [{type(), string()}].
+format({trace_ts, Pid, send, Msg, To, TimeStamp}, Depth) ->
+    [{send,
+      format_send(TimeStamp, Pid, Msg, To, Depth)}];
+
+format({trace_ts, Pid, send_to_non_existing_process, Msg, To, TimeStamp},
+       Depth) ->
+    [{send,
+      format_send_non_existing(TimeStamp, Pid, Msg, To, Depth)}];
+
 format({trace_ts, Pid, call, {M,F,A}, TimeStamp}, Depth) ->
     [{call,
       format(">>>", TimeStamp, Pid,
@@ -556,6 +565,23 @@ format({trace_ts, Pid, exception_from, {M,F,A}, Exc, TimeStamp}, Depth) ->
 
 format(_, _) ->
     [].
+
+%%------------------------------------------------------------------------------
+%% @private
+%%------------------------------------------------------------------------------
+format_send(When, Pid, Msg, To, Depth) ->
+    WhenStr = format_time(When),
+    Dest = lists:flatten(io_list:format("~w", [To])),
+    format_cropped(">!>", WhenStr, Pid, " sends to ", Dest, Msg, Depth).
+
+%%------------------------------------------------------------------------------
+%% @private
+%%------------------------------------------------------------------------------
+format_send_non_existing(When, Pid, Msg, To, Depth) ->
+    WhenStr = format_time(When),
+    Dest = lists:flatten(io_list:format("~w", [To])),
+    format_cropped(">!>", WhenStr, Pid, " sends to DEAD PROCESS ", Dest, Msg,
+                   Depth).
 
 %%------------------------------------------------------------------------------
 %% @private
