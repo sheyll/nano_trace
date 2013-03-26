@@ -18,7 +18,6 @@
          filter/0,
          filter/1,
          help/0,
-         lbm_filter/0,
          long_help/0,
          msg_depth/1,
          pause/0,
@@ -43,7 +42,7 @@
 
 -registered([?MODULE]).
 
--type type() :: call | return | exception.
+-type type() :: call | return | exception | send.
 
 -type test() :: type() |
                 {Type :: type(), Pattern :: string()} |
@@ -55,12 +54,14 @@
                 string() |
                 allF.
 
--define(FLAGS, [call, timestamp, return_to, send]).
--define(DEFAULT_MSG_DEPTH, 20).
+-define(DEFAULT_MSG_DEPTH, 30).
 -define(DEFAULT_IGNORED_APPS,
         [appmon, gs, kernel, mnesia, ssl, snmp, otp_mibs,
          xmerl, crypto, stdlib, public_key, observer,
-         syntax_tools, tools, compiler, tv, os_mon, tv, inets, sasl]).
+         syntax_tools, tools, compiler, tv, os_mon, tv, inets, sasl,
+         cowboy, ranch, hipe, siagnosis, md2, runtime_tools, webtool,
+         syslog, logger, nano_trace, observer, edoc, wx, etop, asn1,
+         eunit, erlymock]).
 -define(MATCH_SPEC, [{'_', [], [{return_trace},{exception_trace}]}]).
 
 %%%=============================================================================
@@ -104,8 +105,7 @@ long_help() ->
     io:format("=========n~n"),
     io:format("start() ->~n"),
     io:format("   {ok, pid()} | {error, term()}.~n"),
-    io:format("  Start the server. The most important mrf applications are traced with~n"),
-    io:format("  lbm_filter, also the output filename is 'default-trace.log'.~n"),
+    io:format("  Start the server. The output filename is 'default-trace.log'.~n"),
     io:format("~n~n"),
     io:format("start([module()]) ->~n"),
     io:format("   {ok, pid()} | {error, term()}.~n"),
@@ -152,10 +152,6 @@ long_help() ->
     io:format("                 test().~n"),
     io:format("  Return the current filter.~n"),
     io:format("~n~n"),
-    io:format("lbm_filter() ->~n"),
-    io:format("                 test().~n"),
-    io:format("  Return a filter that is well suited for internal testing.~n"),
-    io:format("~n~n"),
     io:format("print_applications() ->~n"),
     io:format("                 ok.~n"),
     io:format("  Show the applications that are currently being traced.~n"),
@@ -179,7 +175,7 @@ long_help() ->
     io:format("  This type is used by find and filter, it defines the structure of~n"),
     io:format("  expressions to restrict the output of the trace log.~n"),
     io:format("~n~n"),
-    io:format("type() :: call | return | exception.~n"),
+    io:format("type() :: call | return | exception | send.~n"),
     io:format("~n"),
     io:format("  This type is used to describe the kind of trace event, it is used~n"),
     io:format("  inside test()~n"),
@@ -191,8 +187,7 @@ long_help() ->
 
 %%------------------------------------------------------------------------------
 %% @doc
-%% Start the server, and trace most important lbm_applications.
-%% The trace is written to a file called "default-trace.log".
+%% Start the server the trace is written to a file called "default-trace.log".
 %% @end
 %%------------------------------------------------------------------------------
 -spec start() ->
@@ -221,7 +216,7 @@ start(Applications) ->
 -spec start([module()], string()) ->
                         {ok, pid()} | {error, term()}.
 start(Applications, FileName) ->
-    start(Applications, FileName, lbm_filter()).
+    start(Applications, FileName, allF).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -327,16 +322,6 @@ filter() ->
 
 %%------------------------------------------------------------------------------
 %% @doc
-%% Return a filter that is well suited for internal testing.
-%% @end
-%%------------------------------------------------------------------------------
--spec lbm_filter() ->
-                        test().
-lbm_filter() ->
-    {orF, lbm_white_list(), {notF, lbm_black_list()}}.
-
-%%------------------------------------------------------------------------------
-%% @doc
 %% Print a list of applications to be traced.
 %% @end
 %%------------------------------------------------------------------------------
@@ -375,6 +360,10 @@ check_test(return) ->
 check_test({exception, Str}) when is_list(Str) ->
     true;
 check_test(exception) ->
+    true;
+check_test({send, Str}) when is_list(Str) ->
+    true;
+check_test(send) ->
     true;
 check_test({F, []}) when F == orF orelse F == andF ->
     true;
@@ -571,16 +560,16 @@ format(_, _) ->
 %%------------------------------------------------------------------------------
 format_send(When, Pid, Msg, To, Depth) ->
     WhenStr = format_time(When),
-    Dest = lists:flatten(io_list:format("~w", [To])),
-    format_cropped(">!>", WhenStr, Pid, " sends to ", Dest, Msg, Depth).
+    Dest = lists:flatten(io_lib:format("~w", [To])),
+    format_cropped(" ! ", WhenStr, Pid, " sends to ", Dest, Msg, Depth).
 
 %%------------------------------------------------------------------------------
 %% @private
 %%------------------------------------------------------------------------------
 format_send_non_existing(When, Pid, Msg, To, Depth) ->
     WhenStr = format_time(When),
-    Dest = lists:flatten(io_list:format("~w", [To])),
-    format_cropped(">!>", WhenStr, Pid, " sends to DEAD PROCESS ", Dest, Msg,
+    Dest = lists:flatten(io_lib:format("~w", [To])),
+    format_cropped("*!*", WhenStr, Pid, " sends to DEAD PROCESS ", Dest, Msg,
                    Depth).
 
 %%------------------------------------------------------------------------------
@@ -624,7 +613,6 @@ format_time(Now) ->
         io_lib:format(
           "~4..0w-~2..0w-~2..0w ~2..0w:~2..0w:~2..0w,~3..0w",
 	[YYYY, MM, DD, HH, Mm, SS, Millis])).
-
 
 %%------------------------------------------------------------------------------
 %% @private
@@ -691,14 +679,8 @@ update_trace_config(S) ->
 resume_tracing(#state{trace_active = true} = S) ->
     S;
 resume_tracing(#state{applications = Applications} = S) ->
-    Modules = get_modules(Applications),
-    Patterns = get_trace_patterns(Modules),
-    %% set the patterns
-    [catch erlang:trace_pattern(MFA, ?MATCH_SPEC, []) || MFA <- Patterns],
-
-    %% set the function trace
-    catch erlang:trace(all, true, ?FLAGS),
-
+    enable_send_tracing(Applications),
+    Patterns = enable_call_tracing(Applications),
     %% set the excludes
     catch erlang:trace(self(), false, [all]),
     io:format("~n~n+++ TRACING ENABLED +++~n~n"),
@@ -712,8 +694,7 @@ pause_tracing(#state{trace_active = false} = S) ->
     S;
 pause_tracing(S) ->
     %% reset all trace patterns
-    catch erlang:trace_pattern({'_', '_', '_'}, false, []),
-    catch erlang:trace(all, false, [all]),
+    disable_tracing(),
     io:format("~n~n+++ TRACING DISABLED +++~n~n"),
     S#state{trace_active = false}.
 
@@ -732,26 +713,42 @@ create_file_name() ->
 %%------------------------------------------------------------------------------
 %% @private
 %%------------------------------------------------------------------------------
-lbm_white_list() ->
-    exception.
-
-%%------------------------------------------------------------------------------
-%% @private
-%%------------------------------------------------------------------------------
-lbm_black_list() ->
-    {andF,
-     {orF, call, return},
-     {orF, [":ref/2",
-            "core_log_handler:",
-            "core_media_id:",
-            "core_descriptor:",
-            "error_logger:",
-            "lbm_object:"]}}.
-
-%%------------------------------------------------------------------------------
-%% @private
-%%------------------------------------------------------------------------------
 default_applications() ->
     IgnoredApps = ?DEFAULT_IGNORED_APPS,
     [A || {A, _, _} <- application:loaded_applications(),
                  not lists:member(A, IgnoredApps)].
+
+%%------------------------------------------------------------------------------
+%% @private
+%%------------------------------------------------------------------------------
+enable_call_tracing(Applications) ->
+    Modules = get_modules(Applications),
+    Patterns = get_trace_patterns(Modules),
+    %% set the patterns
+    [catch erlang:trace_pattern(MFA, ?MATCH_SPEC, []) || MFA <- Patterns],
+
+    %% set the function trace
+    catch erlang:trace(all, true, [call, timestamp, return_to]),
+    Patterns.
+
+%%------------------------------------------------------------------------------
+%% @private
+%%------------------------------------------------------------------------------
+enable_send_tracing(Applications) ->
+    [catch erlang:trace(Pid, true, ['receive', send, set_on_spawn]) ||
+        Pid <- get_applications_pids(Applications)].
+
+%%------------------------------------------------------------------------------
+%% @private
+%%------------------------------------------------------------------------------
+get_applications_pids(Applications) ->
+    [Pid || Pid <- processes(),
+            {ok, App} <- [application:get_application(Pid)],
+            lists:member(App, Applications)].
+
+%%------------------------------------------------------------------------------
+%% @private
+%%------------------------------------------------------------------------------
+disable_tracing() ->
+    catch erlang:trace_pattern({'_', '_', '_'}, false, []),
+    catch erlang:trace(all, false, [all]).
